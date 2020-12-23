@@ -32,9 +32,9 @@ instance FromNamedRecord UsageRecord where
 
 
 
-parseCsv :: IO ()
-parseCsv = do
-    csvData <- BL.readFile "sample1.csv"
+parseCsv :: String -> IO ()
+parseCsv fileName = do
+    csvData <- BL.readFile fileName
     case decodeByName csvData of
         Left err -> putStrLn err
         Right (h, v) ->
