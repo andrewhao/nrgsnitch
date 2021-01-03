@@ -10,9 +10,14 @@ import           Data.Csv                   (FromNamedRecord (..),
                                              HasHeader (NoHeader), Header,
                                              decode, decodeByName, header, (.:))
 import           Data.Either                (fromRight)
-import           Data.Time
+import           Data.Maybe                 (fromMaybe)
+import           Data.Time                  (Day, TimeOfDay (todHour),
+                                             defaultTimeLocale, formatTime,
+                                             fromGregorian, midnight,
+                                             parseTimeM)
 import qualified Data.Vector                as V
-import  qualified Data.Maybe as MB
+import           Text.Regex.PCRE            (AllTextMatches (getAllTextMatches),
+                                             (=~))
 
 data UsageRecord = UsageRecord {
    usageType :: String
@@ -42,19 +47,34 @@ getCsvDataFromCsv = fromRight (header [], V.empty)
 getTotalUsages :: V.Vector UsageRecord -> Integer
 getTotalUsages usages = 0
 
-parseTimeString :: String -> Maybe TimeOfDay
-parseTimeString =
-    parseTimeM True defaultTimeLocale "%H:%M"
+parseTimeString :: String -> TimeOfDay
+parseTimeString time =
+    let t = parseTimeM True defaultTimeLocale "%H:%M" time
+    in fromMaybe midnight t
 
 parseDateString :: String -> Day
-parseDateString =
-    let date = parseTimeM True defaultTimeLocale "%F" :: Maybe Day
+parseDateString ds =
+    let d = parseTimeM True defaultTimeLocale "%F" ds
+    in fromMaybe (fromGregorian 1970 1 1) d
 
-    MB.fromMaybe (fromGregorian 1970 1 1) date
+printDay :: Day -> IO ()
+printDay day = putStrLn (formatTime defaultTimeLocale "%D" day)
+
+printTimeOfDay :: TimeOfDay -> IO ()
+printTimeOfDay time = putStrLn (formatTime defaultTimeLocale "%T" time)
 
 isElectricChargingUsage :: UsageRecord -> Bool
 isElectricChargingUsage record =
-    True
+    todHour (parseTimeString . startTime $ record) < 8
+
+parseUsageAmountCents :: String -> Float
+parseUsageAmountCents amountStr =
+    let matchExpr = (amountStr =~ ("[0-9.]+" :: String)) :: AllTextMatches [] String
+        matchGroups = getAllTextMatches matchExpr
+    in read (head matchGroups) :: Float
+
+usageAmountCents :: UsageRecord -> Float
+usageAmountCents = parseUsageAmountCents . cost
 
 printRecord :: UsageRecord -> IO ()
 printRecord p =
@@ -73,11 +93,17 @@ parseCsv fileName = do
 
     putStrLn "Date"
 
-    V.forM_ filteredRecords (\r -> putStrLn parseDateString (date r))
+    V.forM_ filteredRecords (printDay . parseDateString . date)
 
+    putStrLn "Time"
 
+    V.forM_ filteredRecords (printTimeOfDay . parseTimeString . startTime)
 
-    -- case decoded of
-    --     Left err -> putStrLn err
-    --     Right (h, v) ->
-    --         V.forM_ v printRecord
+    putStrLn "Amount"
+
+    V.forM_ filteredRecords (print . usageAmountCents)
+
+    putStrLn "Total Amount"
+
+    let usageEntries = (V.sum . V.map usageAmountCents) filteredRecords
+    print usageEntries

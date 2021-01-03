@@ -25,6 +25,7 @@ dependencies:
   - vector
   - bytestring
   - time
+  - regex-pcre
 
 library:
   source-dirs: src
